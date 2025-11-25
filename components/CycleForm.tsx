@@ -137,6 +137,7 @@ export const CycleForm: React.FC<CycleFormProps> = ({
     if (isSaving) return; 
     
     // SAFE PARSING: Ensure we never pass NaN to the service
+    // If input is empty string, parseFloat returns NaN, so we default to 0
     const rawDeposit = parseFloat(formData.deposit);
     const rawWithdrawal = parseFloat(formData.withdrawal);
     const rawChest = parseFloat(formData.chest);

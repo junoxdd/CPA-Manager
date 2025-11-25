@@ -58,7 +58,7 @@ export const ensureUserProfile = async (sessionUser: any): Promise<User | null> 
         settings: { monthlyGoal: 5000, gamification: { level: 1, titles: ["Novato"], currentXP: 0 } }
     };
 
-    // Usar UPSERT em vez de INSERT para evitar condições de corrida
+    // Usar UPSERT para evitar condições de corrida
     const { data: newProfile, error: insertError } = await supabase
         .from('profiles')
         .upsert([newProfilePayload], { onConflict: 'id' })
@@ -111,7 +111,5 @@ export const updateProfile = async (userId: string, updates: Partial<User>) => {
 };
 
 export const updateUserPlan = async (user: User): Promise<User> => {
-  // Mock implementation since we are forcing PRO in mapSupabaseUser
-  // In a real implementation, this would persist plan changes to DB
   return user;
 };

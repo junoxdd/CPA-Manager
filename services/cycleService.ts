@@ -51,6 +51,9 @@ const preparePayload = (data: Partial<Cycle>, userId: string) => {
         profit = (withdrawal + chest) - deposit;
     }
 
+    // Proteção extra para garantir que profit nunca seja NaN
+    if (isNaN(profit)) profit = 0;
+
     return {
         user_id: userId,
         date: data.date,
@@ -58,8 +61,8 @@ const preparePayload = (data: Partial<Cycle>, userId: string) => {
         withdrawal,
         chest,
         profit,
-        platform: data.platform,
-        notes: data.notes,
+        platform: data.platform || 'Outros',
+        notes: data.notes || '',
         tags: Array.isArray(data.tags) ? data.tags : [], 
         updated_at: new Date().toISOString()
     };
@@ -309,8 +312,31 @@ export const exportCSV = async (userId: string): Promise<string> => {
     return csv;
 };
 
+// --- HARD RESET ---
 export const clearAllData = async (userId: string) => {
-    await supabase.from('cycles').update({ deleted_at: new Date().toISOString() }).eq('user_id', userId);
+    try {
+        // 1. Deletar todos os ciclos fisicamente
+        await supabase.from('cycles').delete().eq('user_id', userId);
+        
+        // 2. Limpar missões e conquistas
+        await supabase.from('missions').delete().eq('user_id', userId);
+        await supabase.from('achievements').delete().eq('user_id', userId);
+        
+        // 3. Resetar Perfil (Nível 1, 0 XP)
+        const defaultGamification = { level: 1, titles: ["Novato"], currentXP: 0, totalXP: 0 };
+        await supabase.from('profiles').update({
+            settings: { monthlyGoal: 5000, gamification: defaultGamification }
+        }).eq('id', userId);
+
+        // 4. Limpar Metadados do Auth
+        await supabase.auth.updateUser({
+            data: { gamification: defaultGamification, alerts: [], reports: [] }
+        });
+
+    } catch (e) {
+        console.error("Erro no Hard Reset:", e);
+        throw e;
+    }
 };
 
 // --- ANALYTICS ---

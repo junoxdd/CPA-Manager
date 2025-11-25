@@ -1,3 +1,4 @@
+
 import React, { useRef, useState, useEffect } from 'react';
 import { X, Download, Upload, Trash2, AlertTriangle, Settings as SettingsIcon, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { exportData, importData, clearAllData, getSettings, saveSettings, exportCSV } from '../services/cycleService';
@@ -20,6 +21,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [stopLoss, setStopLoss] = useState<string>('');
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   useEffect(() => {
     const settings = getSettings(userId);
@@ -99,9 +101,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     reader.readAsText(file);
   };
 
-  const handleClearAll = () => {
-    if (confirm('ATENÇÃO: Isso apagará tudo. Continuar?')) {
-      clearAllData(userId); onClearSuccess(); onToast('Sistema resetado.', 'success'); onClose();
+  const handleClearAll = async () => {
+    if (confirm('ATENÇÃO: Isso apagará TODOS os seus ciclos, conquistas e resetará seu nível. Ação irreversível. Continuar?')) {
+      setIsClearing(true);
+      try {
+        await clearAllData(userId);
+        onClearSuccess();
+        onToast('Sistema resetado. Recarregando...', 'success');
+        setTimeout(() => {
+            window.location.reload();
+        }, 1500);
+      } catch (error) {
+        setIsClearing(false);
+        onToast('Erro ao resetar. Tente novamente.', 'error');
+      }
     }
   };
 
@@ -155,9 +168,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           <div className="p-4 bg-loss/5 border border-loss/10 rounded-lg">
-            <button onClick={handleClearAll} className="w-full py-3 bg-loss/10 text-loss hover:bg-loss hover:text-white transition-colors text-sm font-bold flex items-center justify-center gap-2 rounded">
-              <Trash2 size={16}/> Resetar Sistema
+            <button onClick={handleClearAll} disabled={isClearing} className="w-full py-3 bg-loss/10 text-loss hover:bg-loss hover:text-white transition-colors text-sm font-bold flex items-center justify-center gap-2 rounded disabled:opacity-50">
+              {isClearing ? <Loader2 size={16} className="animate-spin"/> : <Trash2 size={16}/>} Restaurar Sistema
             </button>
+            <p className="text-[10px] text-loss text-center mt-2 opacity-70">
+                Isso apagará ciclos, missões e conquistas permanentemente.
+            </p>
           </div>
         </div>
       </div>
