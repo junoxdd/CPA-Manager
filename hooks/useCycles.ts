@@ -5,8 +5,8 @@ import {
   fetchCycles, saveCycle, updateCycle as updateCycleService, softDeleteCycle as deleteCycleService, 
   getDashboardStats, getAdvancedStats, filterCyclesByPeriod 
 } from '../services/cycleService';
-import { runAutomations } from '../services/automationService';
-import { generateSmartAlerts } from '../services/alertService';
+import { checkAutomations } from '../services/automationService';
+import { checkSmartAlerts, saveAlertsBatch } from '../services/alertService';
 import { getLocalDate } from '../utils/dateUtils';
 
 export const useCycles = (user: User | null, period: DashboardPeriod = 'monthly') => {
@@ -57,11 +57,16 @@ export const useCycles = (user: User | null, period: DashboardPeriod = 'monthly'
       const updatedCycles = [newCycle, ...cycles];
       setCycles(updatedCycles);
       
-      // RUN AUTOMATIONS ONCE HERE (Safe Zone)
-      // This prevents the infinite loop caused by App.tsx observing cycles
+      // RUN AUTOMATIONS & ALERTS IN BATCH (Safe Zone)
+      // We collect all alerts and save them in one go to avoid Rate Limits
       setTimeout(() => {
-         runAutomations(user, updatedCycles);
-         generateSmartAlerts(user, updatedCycles);
+         const autoAlerts = checkAutomations(user, updatedCycles);
+         const smartAlerts = checkSmartAlerts(user, updatedCycles);
+         const allNewAlerts = [...autoAlerts, ...smartAlerts];
+         
+         if (allNewAlerts.length > 0) {
+            saveAlertsBatch(user.id, allNewAlerts);
+         }
       }, 500);
     }
     return newCycle;

@@ -1,5 +1,7 @@
+
 import { Cycle, Alert, User } from '../types';
 import { supabase } from '../lib/supabase';
+import { v4 as uuidv4 } from 'uuid';
 
 // Helper to get alerts is now primarily via the User context in React or Metadata
 export const getAlerts = (userId: string): Alert[] => {
@@ -7,32 +9,50 @@ export const getAlerts = (userId: string): Alert[] => {
 };
 
 /**
- * Saves an alert by storing it inside user_metadata.
+ * Saves a batch of alerts by storing them inside user_metadata.
+ * Replaces individual saveAlert calls to prevent Rate Limit errors.
  */
-export const saveAlert = async (userId: string, alertData: Omit<Alert, 'id' | 'createdAt' | 'readAt'>) => {
+export const saveAlertsBatch = async (userId: string, newAlertsData: Omit<Alert, 'id' | 'createdAt' | 'readAt'>[]) => {
+  if (newAlertsData.length === 0) return;
+
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
     const currentAlerts: Alert[] = user.user_metadata?.alerts || [];
-    
-    const newAlert: Alert = {
-        id: crypto.randomUUID(),
-        createdAt: Date.now(),
-        readAt: null,
-        ...alertData
-    };
+    const timestamp = Date.now();
 
-    const updatedAlerts = [newAlert, ...currentAlerts].slice(0, 50);
+    // Create full alert objects
+    const createdAlerts: Alert[] = newAlertsData.map(a => ({
+        id: uuidv4(),
+        createdAt: timestamp,
+        readAt: null,
+        ...a
+    }));
+
+    // Filter duplicates based on message and time (24h debounce) to avoid spam
+    const uniqueNewAlerts = createdAlerts.filter(newA => {
+        const duplicate = currentAlerts.find(existing => 
+            existing.type === newA.type && 
+            existing.message === newA.message && 
+            (timestamp - existing.createdAt < 24 * 60 * 60 * 1000)
+        );
+        return !duplicate;
+    });
+
+    if (uniqueNewAlerts.length === 0) return;
+
+    // Merge and limit to 50 alerts
+    const updatedAlerts = [...uniqueNewAlerts, ...currentAlerts].slice(0, 50);
 
     const { error } = await supabase.auth.updateUser({
       data: { alerts: updatedAlerts }
     });
 
-    if (error) console.error("Failed to save alert to metadata", error);
+    if (error) console.error("Failed to save alerts batch", error);
     
   } catch (error) {
-    console.error("Failed to save alert", error);
+    console.error("Failed to save alerts", error);
   }
 };
 
@@ -60,10 +80,14 @@ export const deleteAlert = async (userId: string, alertId: string) => {
   });
 };
 
-export const generateSmartAlerts = async (user: User, cycles: Cycle[]) => {
-  if (!user || !cycles.length) return;
+/**
+ * Generates smart alerts based on user data but DOES NOT save them directly.
+ * Returns the alerts so they can be batched.
+ */
+export const checkSmartAlerts = (user: User, cycles: Cycle[]): Omit<Alert, 'id' | 'createdAt' | 'readAt'>[] => {
+  if (!user || !cycles.length) return [];
 
-  const alerts = user.alerts || [];
+  const generatedAlerts: Omit<Alert, 'id' | 'createdAt' | 'readAt'>[] = [];
   const todayStr = new Date().toISOString().split('T')[0];
   
   // 1. Inactivity
@@ -72,10 +96,7 @@ export const generateSmartAlerts = async (user: User, cycles: Cycle[]) => {
     const lastDate = new Date(lastCycle.createdAt).getTime();
     const hoursDiff = (Date.now() - lastDate) / (1000 * 60 * 60);
     if (hoursDiff > 48) {
-      const hasInactivityAlert = alerts.some(a => a.type === 'performance' && a.createdAt > Date.now() - 86400000);
-      if (!hasInactivityAlert) {
-        await saveAlert(user.id, { userId: user.id, type: 'performance', message: 'Você não registra operações há 2 dias.', data: { hint: 'Consistência > Sorte' } });
-      }
+        generatedAlerts.push({ userId: user.id, type: 'performance', message: 'Você não registra operações há 2 dias.', data: { hint: 'Consistência > Sorte' } });
     }
   }
 
@@ -84,19 +105,22 @@ export const generateSmartAlerts = async (user: User, cycles: Cycle[]) => {
     const last3 = cycles.slice(0, 3);
     const allLosses = last3.every(c => c.profit < 0);
     if (allLosses) {
-      const hasRiskAlert = alerts.some(a => a.type === 'risco' && a.createdAt > Date.now() - 43200000);
-      if (!hasRiskAlert) {
-        await saveAlert(user.id, { userId: user.id, type: 'risco', message: 'Alerta de Risco: 3 prejuízos seguidos.', data: { hint: 'Pare por hoje.' } });
-      }
+        generatedAlerts.push({ userId: user.id, type: 'risco', message: 'Alerta de Risco: 3 prejuízos seguidos.', data: { hint: 'Pare por hoje.' } });
     }
   }
 
   // 3. Performance
   const dailyProfit = cycles.filter(c => c.date === todayStr).reduce((sum, c) => sum + c.profit, 0);
   if (dailyProfit > 500) {
-     const hasGoodDayAlert = alerts.some(a => a.type === 'meta' && a.message.includes('Dia excelente'));
-     if (!hasGoodDayAlert) {
-        await saveAlert(user.id, { userId: user.id, type: 'meta', message: `Dia excelente! Lucro de R$ ${dailyProfit.toFixed(2)} hoje.`, data: { hint: 'Proteja seu lucro.' } });
-     }
+      generatedAlerts.push({ userId: user.id, type: 'meta', message: `Dia excelente! Lucro de R$ ${dailyProfit.toFixed(2)} hoje.`, data: { hint: 'Proteja seu lucro.' } });
+  }
+
+  return generatedAlerts;
+};
+
+export const generateSmartAlerts = async (user: User, cycles: Cycle[]) => {
+  const alerts = checkSmartAlerts(user, cycles);
+  if (alerts.length > 0) {
+    await saveAlertsBatch(user.id, alerts);
   }
 };

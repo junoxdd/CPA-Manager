@@ -6,7 +6,9 @@ import { supabase } from './lib/supabase';
 // Core
 import { User } from './types';
 import { saveSettings, softDeleteCycle } from './services/cycleService';
-import { ensureUserProfile } from './services/authService'; // Updated import
+import { ensureUserProfile } from './services/authService';
+import { generateSmartAlerts } from './services/alertService';
+import { runAutomations } from './services/automationService';
 
 // Contexts
 import { UIProvider, useUI } from './contexts/UIContext';
@@ -55,8 +57,12 @@ const AppContent = ({ user, setUser }: { user: User, setUser: (u: User | null) =
     }
   }, [user.preferences]);
 
-  // NOTE: Automation useEffect removed to prevent infinite loops. 
-  // Automations are now triggered in useCycles.ts upon register/update.
+  useEffect(() => {
+    if (cycles.length > 0) {
+        runAutomations(user, cycles); 
+        generateSmartAlerts(user, cycles);
+    }
+  }, [cycles.length, user.id]);
 
   const handleUpdateGoal = useCallback((newGoal: number) => {
     setMonthlyGoal(newGoal);
@@ -69,7 +75,6 @@ const AppContent = ({ user, setUser }: { user: User, setUser: (u: User | null) =
   const handleReloadSettings = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
-        // Use ensureUserProfile here too to be safe and get fresh data
         const updated = await ensureUserProfile(session.user);
         if (updated) {
             setUser(updated);
@@ -267,7 +272,6 @@ function App() {
     const initAuth = async () => {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
-            // Self-healing: Ensure profile exists
             const safeUser = await ensureUserProfile(session.user);
             setUser(safeUser);
         }
@@ -277,7 +281,6 @@ function App() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
-        // Self-healing here too
         const safeUser = await ensureUserProfile(session.user);
         setUser(safeUser);
       } else if (event === 'SIGNED_OUT') {
