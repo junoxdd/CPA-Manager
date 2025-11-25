@@ -55,8 +55,6 @@ const AppContent = ({ user, setUser }: { user: User, setUser: (u: User | null) =
     }
   }, [user.preferences]);
 
-  // REMOVED: Dangerous useEffect that caused infinite loops with runAutomations
-
   const handleUpdateGoal = useCallback((newGoal: number) => {
     setMonthlyGoal(newGoal);
     const updatedSettings = { monthlyGoal: newGoal, stopLossLimit };

@@ -58,9 +58,10 @@ export const ensureUserProfile = async (sessionUser: any): Promise<User | null> 
         settings: { monthlyGoal: 5000, gamification: { level: 1, titles: ["Novato"], currentXP: 0 } }
     };
 
+    // Usar UPSERT em vez de INSERT para evitar condições de corrida
     const { data: newProfile, error: insertError } = await supabase
         .from('profiles')
-        .insert([newProfilePayload])
+        .upsert([newProfilePayload], { onConflict: 'id' })
         .select()
         .single();
 
