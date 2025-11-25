@@ -1,0 +1,7 @@
+{
+  "name": "CPA Master Control",
+  "description": "A professional financial dashboard for tracking CPA operations, featuring dark mode aesthetics, detailed profit analysis, and strict financial recording without ROI metrics.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
