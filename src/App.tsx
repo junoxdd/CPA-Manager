@@ -7,8 +7,7 @@ import { supabase } from './lib/supabase';
 import { User } from './types';
 import { saveSettings, softDeleteCycle } from './services/cycleService';
 import { ensureUserProfile } from './services/authService';
-import { generateSmartAlerts } from './services/alertService';
-import { runAutomations } from './services/automationService';
+// Automations removed from here to avoid loops - they are now handled in useCycles/registerNewCycle
 
 // Contexts
 import { UIProvider, useUI } from './contexts/UIContext';
@@ -56,13 +55,6 @@ const AppContent = ({ user, setUser }: { user: User, setUser: (u: User | null) =
       setStopLossLimit(user.preferences.stopLossLimit);
     }
   }, [user.preferences]);
-
-  useEffect(() => {
-    if (cycles.length > 0) {
-        runAutomations(user, cycles); 
-        generateSmartAlerts(user, cycles);
-    }
-  }, [cycles.length, user.id]);
 
   const handleUpdateGoal = useCallback((newGoal: number) => {
     setMonthlyGoal(newGoal);
