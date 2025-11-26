@@ -1,9 +1,19 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { Cycle, DashboardStats, DashboardPeriod } from "../types";
 import { formatCurrency } from "../utils/formatters";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// REMOVED GLOBAL INITIALIZATION to prevent crash on startup if process is undefined
+// const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+const getAI = () => {
+  // Safety check: verify if process exists to avoid ReferenceError in some browser environments
+  const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : '';
+  if (!apiKey) {
+      console.warn("API Key for AI service is missing.");
+  }
+  return new GoogleGenAI({ apiKey: apiKey || 'MISSING_KEY' });
+};
+
 const MAX_AI_INPUT_LENGTH = 5000;
 
 // --- Helpers ---
@@ -43,13 +53,15 @@ const generateRawInsight = async (
     const systemInstruction = `Você é a "CPA Manager IA", especialista em iGaming. Seja técnico, direto e motivador. Máximo 3 frases.`;
     const fullPrompt = `${systemInstruction}\n${contextPrompt}\nDADOS RECENTES:\n${recentCycles}`;
 
-    const response = await ai.models.generateContent({ 
+    // Call factory function instead of global constant
+    const response = await getAI().models.generateContent({ 
         model: 'gemini-2.5-flash', 
         contents: fullPrompt.slice(0, MAX_AI_INPUT_LENGTH) 
     });
     
     return response.text?.trim() || "Análise indisponível.";
   } catch (error) {
+    console.error("AI Generation Error:", error);
     return "Conexão neural instável.";
   }
 };
@@ -68,7 +80,7 @@ export const getNeuroPsychProfile = async (cycles: Cycle[]): Promise<string | nu
       Seja curto e misterioso. Ex: "Padrão de falha às sextas detectado."
     `;
 
-    const response = await ai.models.generateContent({
+    const response = await getAI().models.generateContent({
         model: 'gemini-2.5-flash',
         contents: `${systemInstruction}\nHistórico Recente:\n${dataSummary}`
     });
@@ -97,7 +109,7 @@ export const extractDataFromScreenshot = async (base64Image: string): Promise<Pa
     const base64Data = base64Image.includes('base64,') ? base64Image.split('base64,')[1] : base64Image;
     const prompt = `Analise print de aposta. Identifique: Deposit, Withdrawal (0 se perdeu), Platform, Date (YYYY-MM-DD). JSON Only.`;
 
-    const response = await ai.models.generateContent({
+    const response = await getAI().models.generateContent({
       model: 'gemini-2.5-flash',
       contents: { parts: [{ inlineData: { mimeType: 'image/png', data: base64Data } }, { text: prompt }] },
       config: { responseMimeType: 'application/json' }
@@ -121,7 +133,7 @@ export const parseTextHistory = async (rawText: string): Promise<any[]> => {
   try {
     if (!rawText) return [];
     const prompt = `Converta texto em JSON estrito. Data YYYY-MM-DD. Profit pode ser negativo. Se sem plataforma, 'Importado'. Ex: { "cycles": [{ "date": "...", "profit": 0, "platform": "..." }] }. Texto: "${truncate(rawText, 2000)}"`;
-    const response = await ai.models.generateContent({
+    const response = await getAI().models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
       config: { responseMimeType: 'application/json' }

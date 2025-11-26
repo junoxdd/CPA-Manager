@@ -1,4 +1,3 @@
-
 import { supabase } from '../lib/supabase';
 import { User } from '../types';
 
@@ -24,8 +23,7 @@ export const mapSupabaseUser = (sbUser: any, profile: any): User => {
     preferences: dbProfile.settings || metadata.settings || { monthlyGoal: 5000 },
     gamificationState: dbProfile.settings?.gamification || metadata.gamification || undefined,
     
-    alerts: metadata.alerts || [], 
-    reports: metadata.reports || []
+    alerts: metadata.alerts || []
   };
 };
 
@@ -58,16 +56,16 @@ export const ensureUserProfile = async (sessionUser: any): Promise<User | null> 
         settings: { monthlyGoal: 5000, gamification: { level: 1, titles: ["Novato"], currentXP: 0 } }
     };
 
+    // Usar UPSERT para evitar condições de corrida (race conditions)
     const { data: newProfile, error: insertError } = await supabase
         .from('profiles')
-        .insert([newProfilePayload])
+        .upsert([newProfilePayload], { onConflict: 'id' })
         .select()
         .single();
 
     if (insertError) {
         console.error("Erro fatal ao criar perfil automático:", insertError);
-        // Retorna um objeto de usuário "in memory" para não travar o app, 
-        // mas funcionalidades de banco podem falhar.
+        // Retorna um objeto de usuário "in memory" para não travar o app
         return mapSupabaseUser(sessionUser, null);
     }
 
@@ -110,7 +108,5 @@ export const updateProfile = async (userId: string, updates: Partial<User>) => {
 };
 
 export const updateUserPlan = async (user: User): Promise<User> => {
-  // Mock implementation since we are forcing PRO in mapSupabaseUser
-  // In a real implementation, this would persist plan changes to DB
   return user;
 };

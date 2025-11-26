@@ -6,6 +6,8 @@ import { supabase } from './lib/supabase';
 import { User } from './types';
 import { saveSettings, softDeleteCycle } from './services/cycleService';
 import { ensureUserProfile } from './services/authService';
+import { generateSmartAlerts } from './services/alertService';
+import { runAutomations } from './services/automationService';
 
 // Contexts
 import { UIProvider, useUI } from './contexts/UIContext';
@@ -31,7 +33,6 @@ const CycleList = React.lazy(() => import('./components/CycleList').then(m => ({
 const DailySection = React.lazy(() => import('./modules/dashboard/DailySection').then(m => ({ default: m.DailySection })) as any);
 const WeeklySection = React.lazy(() => import('./modules/dashboard/WeeklySection').then(m => ({ default: m.WeeklySection })) as any);
 const MonthlySection = React.lazy(() => import('./modules/dashboard/MonthlySection').then(m => ({ default: m.MonthlySection })) as any);
-const AiInsightCard = React.lazy(() => import('./components/dashboard/AiInsightCard').then(m => ({ default: m.AiInsightCard })) as any);
 
 const AppContent = ({ user, setUser }: { user: User, setUser: (u: User | null) => void }) => {
   const { 
@@ -53,6 +54,16 @@ const AppContent = ({ user, setUser }: { user: User, setUser: (u: User | null) =
       setStopLossLimit(user.preferences.stopLossLimit);
     }
   }, [user.preferences]);
+
+  useEffect(() => {
+    if (cycles.length > 0) {
+        // Run automations in background
+        setTimeout(() => {
+            runAutomations(user, cycles); 
+            generateSmartAlerts(user, cycles);
+        }, 2000);
+    }
+  }, [cycles.length, user.id]);
 
   const handleUpdateGoal = useCallback((newGoal: number) => {
     setMonthlyGoal(newGoal);
@@ -118,7 +129,6 @@ const AppContent = ({ user, setUser }: { user: User, setUser: (u: User | null) =
               <div className="h-6 w-[1px] bg-white/10 mx-1"></div>
               <DashboardActions 
                   onNewCycle={handleNewCycle}
-                  onReports={() => openModal('reports')}
                   onAlerts={() => openModal('alerts')}
                   onShare={() => openModal('flex')}
                   onAchievements={() => openModal('missions')}
@@ -146,7 +156,6 @@ const AppContent = ({ user, setUser }: { user: User, setUser: (u: User | null) =
            <div className="flex-1 overflow-x-auto">
              <DashboardActions 
                   onNewCycle={handleNewCycle} 
-                  onReports={() => openModal('reports')}
                   onAlerts={() => openModal('alerts')}
                   onShare={() => openModal('flex')}
                   onAchievements={() => openModal('missions')}
@@ -186,10 +195,6 @@ const AppContent = ({ user, setUser }: { user: User, setUser: (u: User | null) =
                     ))}
                   </div>
                 </div>
-
-                <React.Suspense fallback={<div className="h-24 glass animate-pulse"/>}>
-                    <AiInsightCard isPro={plan.isPro} />
-                </React.Suspense>
 
                 <div key={dashboardPeriod} className="animate-fade-in">
                     <React.Suspense fallback={<div className="h-96 glass animate-pulse"/>}>
@@ -245,7 +250,6 @@ const AppContent = ({ user, setUser }: { user: User, setUser: (u: User | null) =
         handleReloadSettings={handleReloadSettings}
         isPrivacyMode={isPrivacyMode}
         alerts={user.alerts || []}
-        reports={user.reports || []}
       />
 
       <Toast message={toast.message} isVisible={toast.visible} onClose={hideToast} type={toast.type} />
@@ -260,19 +264,19 @@ function App() {
 
   useEffect(() => {
     const initAuth = async () => {
+        // FAILSAFE: Timeout de 3 segundos para evitar tela branca infinita
+        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve('timeout'), 3000));
+        
         try {
-            // Race between Supabase and a 5s Timeout
-            const { data, error } = await Promise.race([
-                supabase.auth.getSession(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Auth Timeout')), 5000))
-            ]) as any;
+            const sessionPromise = supabase.auth.getSession();
+            const result = await Promise.race([sessionPromise, timeoutPromise]) as any;
 
-            if (data?.session?.user) {
-                const safeUser = await ensureUserProfile(data.session.user);
+            if (result !== 'timeout' && result?.data?.session?.user) {
+                const safeUser = await ensureUserProfile(result.data.session.user);
                 setUser(safeUser);
             }
         } catch (e) {
-            console.warn("Auth check failed or timed out:", e);
+            console.warn("Auth check finished with info:", e);
         } finally {
             setCheckingAuth(false);
         }
