@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, AreaChart, Area, ReferenceLine } from 'recharts';
 import { Cycle } from '../types';
@@ -101,7 +102,7 @@ export const Charts: React.FC<ChartsProps> = React.memo(({ cycles, isPrivacyMode
            <span className="text-[10px] text-secondary normal-case">Média: {formatValue(averageProfit)}</span>
         </h3>
         <div className="h-[250px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <BarChart data={dailyData}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="date" stroke="#64748b" tick={{fill: '#64748b', fontSize: 10}} axisLine={false} tickLine={false} />
@@ -123,7 +124,7 @@ export const Charts: React.FC<ChartsProps> = React.memo(({ cycles, isPrivacyMode
         <div className="glass p-5 border-t border-border bg-surface/50 h-full w-full">
             <h3 className="text-sm font-bold text-foreground mb-6 uppercase tracking-widest opacity-80">Melhores Dias</h3>
             <div className="h-[250px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                     <BarChart data={weekdayData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                         <XAxis dataKey="name" stroke="#64748b" tick={{fill: '#64748b', fontSize: 10}} axisLine={false} tickLine={false} />
@@ -144,7 +145,7 @@ export const Charts: React.FC<ChartsProps> = React.memo(({ cycles, isPrivacyMode
         <h3 className="text-sm font-bold text-foreground mb-6 uppercase tracking-widest opacity-80">Origem dos Ganhos</h3>
         {distributionData.length > 0 ? (
           <div className="h-[250px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <PieChart>
                 <Pie data={distributionData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
                   <Cell key="cell-0" fill={COLOR_NEUTRAL} stroke="none" />
@@ -165,7 +166,7 @@ export const Charts: React.FC<ChartsProps> = React.memo(({ cycles, isPrivacyMode
         <div className="glass p-5 border-t border-border bg-surface/50 h-full">
           <h3 className="text-sm font-bold text-foreground mb-6 uppercase tracking-widest opacity-80">Evolução de Caixa</h3>
           <div className="h-[250px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <AreaChart data={evolutionData}>
                 <defs>
                   <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
