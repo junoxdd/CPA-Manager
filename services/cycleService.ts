@@ -4,19 +4,51 @@ import { Cycle, AppSettings, DashboardPeriod, AdvancedStats, Badge } from '../ty
 import { getLocalDate } from '../utils/dateUtils';
 import { v4 as uuidv4 } from 'uuid';
 
+// --- HELPER: Safe Float Parser (Universal) ---
+// Converte "R$ 1.500,00", "1500.00", "1,500.00" para number puro (1500.00)
+const safeFloat = (value: any): number => {
+  if (typeof value === 'number') return isNaN(value) ? 0 : value;
+  if (!value) return 0;
+  
+  let str = String(value).trim();
+  
+  // Remove símbolos de moeda e espaços
+  str = str.replace(/[R$\s]/g, '');
+
+  // Detecta formato brasileiro (ponto como milhar, vírgula como decimal)
+  // Ex: 1.500,00 -> Se tem vírgula e ponto, e a vírgula é o último separador
+  if (str.includes(',') && str.includes('.')) {
+     const lastDot = str.lastIndexOf('.');
+     const lastComma = str.lastIndexOf(',');
+     if (lastComma > lastDot) {
+         // Formato BR: remove pontos, troca vírgula por ponto
+         str = str.replace(/\./g, '').replace(',', '.');
+     } else {
+         // Formato US com separadores: remove vírgulas
+         str = str.replace(/,/g, '');
+     }
+  } else if (str.includes(',')) {
+     // Apenas vírgula (ex: 50,00) -> troca por ponto
+     str = str.replace(',', '.');
+  }
+
+  const result = parseFloat(str);
+  return isNaN(result) ? 0 : Number(result.toFixed(2));
+};
+
 // --- HELPER: Normalizer (Mapper Snake_case -> CamelCase) ---
 export const normalizeCycle = (c: any): Cycle => {
   if (!c) return {} as Cycle; // Safety Check
 
-  const deposit = Number(c.deposit || 0);
-  const withdrawal = Number(c.withdrawal || 0);
-  const chest = Number(c.chest || 0);
+  const deposit = safeFloat(c.deposit);
+  const withdrawal = safeFloat(c.withdrawal);
+  const chest = safeFloat(c.chest);
   
-  let profit = Number(c.profit);
+  let profit = safeFloat(c.profit);
   
-  // Fallback para corrigir dados antigos ou mal salvos
-  if (c.profit === null || c.profit === undefined || isNaN(profit)) {
-      profit = (withdrawal + chest) - deposit;
+  // Fallback de consistência matemática
+  if (c.profit === null || c.profit === undefined) {
+      profit = Number(((withdrawal + chest) - deposit).toFixed(2));
   }
 
   return {
@@ -36,27 +68,16 @@ export const normalizeCycle = (c: any): Cycle => {
 
 // --- HELPER: Payload Cleaner ---
 const preparePayload = (data: Partial<Cycle>, userId: string) => {
-    // Garante tipos numéricos para o banco e sanitiza NaN
-    let deposit = Number(data.deposit);
-    let withdrawal = Number(data.withdrawal);
-    let chest = Number(data.chest);
-
-    if (isNaN(deposit)) deposit = 0;
-    if (isNaN(withdrawal)) withdrawal = 0;
-    if (isNaN(chest)) chest = 0;
+    const deposit = safeFloat(data.deposit);
+    const withdrawal = safeFloat(data.withdrawal);
+    const chest = safeFloat(data.chest);
     
-    // Se temos os dados para calcular o lucro, calculamos aqui também para garantir
-    let profit = Number(data.profit);
-    if (isNaN(profit)) {
-        profit = (withdrawal + chest) - deposit;
-    }
-
-    // Proteção extra para garantir que profit nunca seja NaN
-    if (isNaN(profit)) profit = 0;
+    // Cálculo de lucro mandatório no backend para evitar inconsistência
+    const profit = Number(((withdrawal + chest) - deposit).toFixed(2));
 
     return {
         user_id: userId,
-        date: data.date,
+        date: data.date || getLocalDate(),
         deposit,
         withdrawal,
         chest,
@@ -90,59 +111,54 @@ export const fetchCycles = async (userId: string): Promise<Cycle[]> => {
 };
 
 export const saveCycle = async (userId: string, cycleData: Omit<Cycle, 'id' | 'createdAt'> & { profit?: number }) => {
-  try {
-    const finalDate = cycleData.date || getLocalDate();
-    
-    // MATEMÁTICA FORÇADA (Backend Safety Layer)
-    const deposit = Number(cycleData.deposit || 0);
-    const withdrawal = Number(cycleData.withdrawal || 0);
-    const chest = Number(cycleData.chest || 0);
-    
-    // Recalculo mandatório para evitar "R$ 0,00" por erro de envio
-    const calculatedProfit = (withdrawal + chest) - deposit;
+  // RETRY LOGIC: Tenta salvar até 3 vezes se der erro de rede
+  const MAX_RETRIES = 3;
+  let attempt = 0;
+  let lastError = null;
 
-    const payload = {
-        ...preparePayload({ 
-            ...cycleData, 
-            deposit, 
-            withdrawal, 
-            chest, 
-            profit: calculatedProfit, 
-            date: finalDate 
-        }, userId),
-        created_at: new Date().toISOString()
-    };
+  while (attempt < MAX_RETRIES) {
+      try {
+        const payload = {
+            ...preparePayload(cycleData, userId),
+            created_at: new Date().toISOString()
+        };
 
-    const { data, error } = await supabase.from('cycles').insert([payload]).select().single();
+        const { data, error } = await supabase.from('cycles').insert([payload]).select().single();
 
-    if (error) {
-        console.error("Erro ao salvar ciclo (DB):", error);
-        return { data: null, error };
-    }
-    
-    if (!data) return { data: null, error: new Error("No data returned from insert") };
+        if (!error && data) {
+            return { data: normalizeCycle(data), error: null };
+        }
+        
+        // Se o erro for específico de sessão, tenta atualizar a sessão antes de tentar de novo
+        if (error && (error.code === 'PGRST301' || error.message.includes('JWT'))) {
+             await supabase.auth.refreshSession();
+        }
 
-    return { data: normalizeCycle(data), error: null };
-  } catch (err: any) {
-    console.error('Erro Interno (Save):', err);
-    return { data: null, error: err };
+        lastError = error;
+        throw error; // Força cair no catch para retry
+
+      } catch (err: any) {
+        lastError = err;
+        attempt++;
+        // Espera exponencial: 500ms, 1000ms...
+        if (attempt < MAX_RETRIES) {
+            await new Promise(r => setTimeout(r, 500 * attempt));
+            console.warn(`Tentativa de salvar falhou (${attempt}/${MAX_RETRIES}). Tentando novamente...`);
+        }
+      }
   }
+
+  console.error("Erro Definitivo ao salvar ciclo:", lastError);
+  return { data: null, error: lastError };
 };
 
 export const saveCyclesBatch = async (userId: string, cyclesData: Partial<Cycle>[]) => {
   if (!cyclesData.length) return { count: 0, error: null };
 
-  const payload = cyclesData.map(c => {
-      const deposit = Number(c.deposit || 0);
-      const withdrawal = Number(c.withdrawal || 0);
-      const chest = Number(c.chest || 0);
-      const prof = (withdrawal + chest) - deposit;
-
-      return {
-        ...preparePayload({ ...c, deposit, withdrawal, chest, profit: prof }, userId),
-        created_at: new Date().toISOString()
-      };
-  });
+  const payload = cyclesData.map(c => ({
+    ...preparePayload(c, userId),
+    created_at: new Date().toISOString()
+  }));
 
   const { data, error } = await supabase.from('cycles').insert(payload).select();
   
@@ -152,12 +168,7 @@ export const saveCyclesBatch = async (userId: string, cyclesData: Partial<Cycle>
 
 export const updateCycle = async (userId: string, id: string, data: Partial<Cycle>) => {
   try {
-    let payload = preparePayload(data, userId);
-    
-    // Se o payload tem componentes financeiros, recalcula o profit para garantir
-    if (payload.deposit !== undefined && payload.withdrawal !== undefined && payload.chest !== undefined) {
-         payload.profit = (Number(payload.withdrawal) + Number(payload.chest)) - Number(payload.deposit);
-    }
+    const payload = preparePayload(data, userId);
     
     // Removemos chaves que não devem ser alteradas no update
     delete (payload as any).user_id; 
@@ -245,10 +256,10 @@ export const permanentDeleteCycle = async (userId: string, id: string) => {
 // --- IMPORT / EXPORT ---
 
 const normalizeCycleData = (raw: any, userId: string): any => {
-    const deposit = Number(raw.deposit || 0);
-    const withdrawal = Number(raw.withdrawal || 0);
-    const chest = Number(raw.chest || 0);
-    const profit = raw.profit !== undefined ? Number(raw.profit) : ((withdrawal + chest) - deposit);
+    const deposit = safeFloat(raw.deposit);
+    const withdrawal = safeFloat(raw.withdrawal);
+    const chest = safeFloat(raw.chest);
+    const profit = raw.profit !== undefined ? safeFloat(raw.profit) : ((withdrawal + chest) - deposit);
     
     return {
         id: (raw.id && raw.id.length > 10) ? raw.id : undefined,
@@ -315,20 +326,15 @@ export const exportCSV = async (userId: string): Promise<string> => {
 // --- HARD RESET ---
 export const clearAllData = async (userId: string) => {
     try {
-        // 1. Deletar todos os ciclos fisicamente
         await supabase.from('cycles').delete().eq('user_id', userId);
-        
-        // 2. Limpar missões e conquistas
         await supabase.from('missions').delete().eq('user_id', userId);
         await supabase.from('achievements').delete().eq('user_id', userId);
         
-        // 3. Resetar Perfil (Nível 1, 0 XP)
         const defaultGamification = { level: 1, titles: ["Novato"], currentXP: 0, totalXP: 0 };
         await supabase.from('profiles').update({
             settings: { monthlyGoal: 5000, gamification: defaultGamification }
         }).eq('id', userId);
 
-        // 4. Limpar Metadados do Auth
         await supabase.auth.updateUser({
             data: { gamification: defaultGamification, alerts: [], reports: [] }
         });
@@ -389,10 +395,10 @@ export const getDashboardStats = (cycles: Cycle[]) => {
     const cycleTime = new Date(y, m - 1, d).getTime();
     
     // Ensure numbers for stats
-    const prof = Number(cycle.profit);
-    const dep = Number(cycle.deposit);
-    const wd = Number(cycle.withdrawal);
-    const ch = Number(cycle.chest);
+    const prof = safeFloat(cycle.profit);
+    const dep = safeFloat(cycle.deposit);
+    const wd = safeFloat(cycle.withdrawal);
+    const ch = safeFloat(cycle.chest);
 
     stats.totalProfit += prof;
     stats.totalDeposit += dep;

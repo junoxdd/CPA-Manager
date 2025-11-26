@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Save, Calendar, Loader2, AlertTriangle, Camera, Hash } from 'lucide-react';
+import { X, Save, Calendar, Loader2, Camera, Hash } from 'lucide-react';
 import { Cycle, User } from '../types';
 import { getCommonPlatforms, getCommonTags } from '../services/cycleService';
-import { auditCycleData, extractDataFromScreenshot } from '../services/aiService';
+import { extractDataFromScreenshot } from '../services/aiService';
 import { getLocalDate } from '../utils/dateUtils';
 import { useHaptic } from '../hooks/useHaptic';
 import { useCyclesContext } from '../contexts/CycleContext';
@@ -34,7 +34,6 @@ export const CycleForm: React.FC<CycleFormProps> = ({
   
   const [commonPlatforms, setCommonPlatforms] = useState<string[]>([]);
   const [commonTags, setCommonTags] = useState<string[]>([]);
-  const [auditWarning, setAuditWarning] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isProcessingOCR, setIsProcessingOCR] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -43,6 +42,7 @@ export const CycleForm: React.FC<CycleFormProps> = ({
   const haptic = useHaptic();
 
   useEffect(() => {
+    isMounted.current = true;
     return () => { isMounted.current = false; };
   }, []);
 
@@ -75,7 +75,6 @@ export const CycleForm: React.FC<CycleFormProps> = ({
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    setAuditWarning(null); 
   };
 
   const handleTagKeyDown = (e: React.KeyboardEvent) => {
@@ -99,8 +98,9 @@ export const CycleForm: React.FC<CycleFormProps> = ({
 
   const handleQuickAdd = (amount: number) => {
     haptic.light();
-    const current = parseFloat(formData.deposit) || 0;
-    setFormData(prev => ({ ...prev, deposit: (current + amount).toString() }));
+    // Simple parse just for the quick add UI logic, strict parse happens on submit
+    const current = parseFloat(formData.deposit.replace(',', '.') || '0') || 0;
+    setFormData(prev => ({ ...prev, deposit: (current + amount).toFixed(2) }));
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -136,37 +136,16 @@ export const CycleForm: React.FC<CycleFormProps> = ({
     e.stopPropagation();
     if (isSaving) return; 
     
-    // SAFE PARSING: Ensure we never pass NaN to the service
-    // If input is empty string, parseFloat returns NaN, so we default to 0
-    const rawDeposit = parseFloat(formData.deposit);
-    const rawWithdrawal = parseFloat(formData.withdrawal);
-    const rawChest = parseFloat(formData.chest);
-
-    const deposit = isNaN(rawDeposit) ? 0 : Number(rawDeposit.toFixed(2));
-    const withdrawal = isNaN(rawWithdrawal) ? 0 : Number(rawWithdrawal.toFixed(2));
-    const chest = isNaN(rawChest) ? 0 : Number(rawChest.toFixed(2));
-    
-    // Logic: Profit = (Withdrawal + Chest) - Deposit
-    const profit = Number(((withdrawal + chest) - deposit).toFixed(2));
-
-    if (!auditWarning && profit !== 0) {
-        const audit = auditCycleData(deposit, withdrawal, profit);
-        if (!audit.valid) {
-            haptic.error();
-            setAuditWarning(audit.message || "Dados inconsistentes detectados.");
-            return;
-        }
-    }
-
     setIsSaving(true);
     haptic.success();
 
+    // Pass strings directly to the context/service which now has the Robust 'safeFloat' parser
+    // This avoids double parsing issues at the UI layer
     const payload = {
       date: formData.date || getLocalDate(),
-      deposit,
-      withdrawal,
-      chest,
-      profit, 
+      deposit: formData.deposit,
+      withdrawal: formData.withdrawal,
+      chest: formData.chest,
       platform: formData.platform || 'Outros',
       notes: formData.notes,
       tags
@@ -177,7 +156,7 @@ export const CycleForm: React.FC<CycleFormProps> = ({
             setIsSaving(false);
             showToast("A operação está demorando. Verifique sua conexão.", 'error');
         }
-    }, 15000);
+    }, 12000); // 12s timeout allows for retry logic in service
 
     try {
         if (cycleToEdit) {
@@ -196,7 +175,7 @@ export const CycleForm: React.FC<CycleFormProps> = ({
     } catch (err: any) {
         clearTimeout(timeoutId);
         console.error("Erro no salvamento:", err);
-        let errorMsg = typeof err === 'string' ? err : (err?.message || "Erro desconhecido");
+        const errorMsg = typeof err === 'string' ? err : (err?.message || "Erro desconhecido");
         if(isMounted.current) {
             showToast(`Erro ao salvar: ${errorMsg}`, 'error');
             haptic.error();
@@ -231,17 +210,6 @@ export const CycleForm: React.FC<CycleFormProps> = ({
            <button type="button" onClick={onClose}><X className="text-secondary hover:text-white"/></button>
         </div>
 
-        {auditWarning && (
-            <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded flex items-start gap-3">
-                <AlertTriangle className="text-yellow-500 shrink-0" size={18} />
-                <div>
-                    <p className="text-xs text-yellow-200 font-bold mb-1">Atenção (Auditoria IA)</p>
-                    <p className="text-[10px] text-yellow-100/80">{auditWarning}</p>
-                    <button type="submit" className="mt-2 text-[10px] font-bold text-yellow-500 underline hover:text-yellow-400">Confirmar mesmo assim</button>
-                </div>
-            </div>
-        )}
-
         <div className="space-y-4">
            <div className="grid grid-cols-2 gap-4">
               <div className="relative">
@@ -273,7 +241,7 @@ export const CycleForm: React.FC<CycleFormProps> = ({
            <div className="grid grid-cols-3 gap-3">
               <div>
                  <label className="text-[10px] uppercase font-bold text-secondary">Depósito</label>
-                 <input type="number" step="0.01" max="99999999" name="deposit" value={formData.deposit} onChange={handleChange} required 
+                 <input type="text" inputMode="decimal" name="deposit" value={formData.deposit} onChange={handleChange} required placeholder="0,00"
                    className="w-full bg-white/5 border border-white/10 rounded p-2 text-white focus:border-primary outline-none"/>
                  
                  <div className="flex gap-1 mt-1">
@@ -283,12 +251,12 @@ export const CycleForm: React.FC<CycleFormProps> = ({
               </div>
               <div>
                  <label className="text-[10px] uppercase font-bold text-profit">Saque</label>
-                 <input type="number" step="0.01" max="99999999" name="withdrawal" value={formData.withdrawal} onChange={handleChange} 
+                 <input type="text" inputMode="decimal" name="withdrawal" value={formData.withdrawal} onChange={handleChange} placeholder="0,00"
                    className="w-full bg-white/5 border border-white/10 rounded p-2 text-profit focus:border-profit outline-none"/>
               </div>
               <div>
                  <label className="text-[10px] uppercase font-bold text-gold">Baú (CPA)</label>
-                 <input type="number" step="0.01" max="99999999" name="chest" value={formData.chest} onChange={handleChange} 
+                 <input type="text" inputMode="decimal" name="chest" value={formData.chest} onChange={handleChange} placeholder="0,00"
                    className="w-full bg-white/5 border border-white/10 rounded p-2 text-gold focus:border-gold outline-none"/>
               </div>
            </div>
@@ -325,7 +293,7 @@ export const CycleForm: React.FC<CycleFormProps> = ({
         </div>
 
         <button type="submit" disabled={isSaving} className="w-full mt-6 bg-primary hover:bg-primaryGlow text-white font-bold py-3 rounded shadow-neon-primary transition-all flex items-center justify-center gap-2 disabled:opacity-50">
-           {isSaving ? <Loader2 size={18} className="animate-spin"/> : <><Save size={18}/> {auditWarning ? 'Confirmar Inconsistência' : 'Salvar'}</>}
+           {isSaving ? <Loader2 size={18} className="animate-spin"/> : <><Save size={18}/> Salvar Ciclo</>}
         </button>
       </form>
     </div>
