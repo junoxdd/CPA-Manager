@@ -1,6 +1,5 @@
-
 import React, { Suspense } from 'react';
-import { User, Cycle, Alert, Report } from '../types';
+import { User, Cycle, Alert } from '../types';
 
 // Lazy Imports for Modals
 const CycleForm = React.lazy(() => import('./CycleForm').then(m => ({ default: m.CycleForm })));
@@ -8,7 +7,6 @@ const SettingsModal = React.lazy(() => import('./SettingsModal').then(m => ({ de
 const GamificationHub = React.lazy(() => import('./GamificationHub').then(m => ({ default: m.GamificationHub })));
 const FlexCardModal = React.lazy(() => import('./FlexCardModal').then(m => ({ default: m.FlexCardModal })));
 const AlertsModal = React.lazy(() => import('./AlertsModal').then(m => ({ default: m.AlertsModal })));
-const ReportsModal = React.lazy(() => import('./ReportsModal').then(m => ({ default: m.ReportsModal })));
 const HistoryImportModal = React.lazy(() => import('./HistoryImportModal').then(m => ({ default: m.HistoryImportModal })));
 const TrashModal = React.lazy(() => import('./TrashModal').then(m => ({ default: m.TrashModal })));
 const HallOfFameModal = React.lazy(() => import('./HallOfFameModal').then(m => ({ default: m.HallOfFameModal })));
@@ -39,14 +37,13 @@ interface ModalManagerProps {
   handleReloadSettings: () => void;
   isPrivacyMode: boolean;
   alerts: Alert[];
-  reports: Report[];
 }
 
 export const ModalManager: React.FC<ModalManagerProps> = ({
   modals, closeModal, user, setUser, cycles, reloadCycles, showToast, isPro,
   openUpgradeModal, isUpgradeModalOpen, closeUpgradeModal, handleUpgrade, handleStartTrial,
   isOnboardingOpen, closeOnboarding, editingCycle, duplicatingCycle, stats,
-  handleReloadSettings, isPrivacyMode, alerts, reports
+  handleReloadSettings, isPrivacyMode, alerts
 }) => {
   return (
     <Suspense fallback={null}>
@@ -89,8 +86,7 @@ export const ModalManager: React.FC<ModalManagerProps> = ({
 
       {modals.flex && <FlexCardModal onClose={() => closeModal('flex')} stats={stats} user={user} />}
       {modals.alerts && <AlertsModal alerts={alerts} onClose={() => { closeModal('alerts'); handleReloadSettings(); }} onUpdate={handleReloadSettings} userId={user.id} />}
-      {modals.reports && <ReportsModal reports={reports} onClose={() => closeModal('reports')} onUpdate={handleReloadSettings} user={user} isPro={isPro} onUpgrade={openUpgradeModal} />}
-
+      
       {modals.import && <HistoryImportModal onClose={() => closeModal('import')} onSuccess={(msg) => { reloadCycles(); showToast(msg); }} user={user} />}
       
       {isUpgradeModalOpen && <UpgradeModal onClose={closeUpgradeModal} onUpgrade={handleUpgrade} onStartTrial={handleStartTrial} />}

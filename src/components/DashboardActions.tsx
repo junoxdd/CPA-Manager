@@ -1,10 +1,9 @@
 import React from 'react';
-import { Plus, Bell, Share2, Trophy, Settings, LogOut, FileSpreadsheet, Trash2, Star, Target, User as UserIcon, FileText } from 'lucide-react';
+import { Plus, Bell, Share2, Trophy, Settings, LogOut, FileSpreadsheet, Trash2, Star, Target, User as UserIcon } from 'lucide-react';
 import { Tooltip } from './Tooltip';
 
 interface DashboardActionsProps {
   onNewCycle: () => void;
-  onReports: () => void;
   onAlerts: () => void;
   onShare: () => void;
   onAchievements: () => void;
@@ -20,7 +19,7 @@ interface DashboardActionsProps {
 }
 
 export const DashboardActions: React.FC<DashboardActionsProps> = ({
-  onNewCycle, onReports, onAlerts, onShare, onAchievements, onSettings, onImportHistory, onTrash, onHallOfFame, onMissions, onProfile, onLogout, alertCount, userAvatar
+  onNewCycle, onAlerts, onShare, onAchievements, onSettings, onImportHistory, onTrash, onHallOfFame, onMissions, onProfile, onLogout, alertCount, userAvatar
 }) => {
   const iconBtnClass = "relative h-9 w-9 flex items-center justify-center rounded-lg transition-all duration-300 active:scale-95 border border-transparent hover:border-white/10 hover:shadow-glass";
   const glassContainerClass = "glass px-3 py-2 bg-surface/40 backdrop-blur-xl border border-white/5 flex items-center gap-2 md:gap-4 rounded-xl shadow-lg overflow-x-auto scrollbar-hide max-w-full flex-shrink-0";
@@ -51,15 +50,6 @@ export const DashboardActions: React.FC<DashboardActionsProps> = ({
               <FileSpreadsheet size={18}/>
             </button>
           </Tooltip>
-
-          {/* Botão oculto visualmente (HIDDEN com style inline para garantir) */}
-          <div className="hidden" style={{ display: 'none' }}>
-            <Tooltip text="Relatórios PDF">
-                <button onClick={onReports} className={`${iconBtnClass} bg-white/5 text-secondary hover:text-white hover:bg-white/10`}>
-                <FileText size={18}/>
-                </button>
-            </Tooltip>
-          </div>
 
           <Tooltip text="Alertas">
               <button onClick={onAlerts} className={`${iconBtnClass} bg-white/5 text-secondary hover:text-white hover:bg-white/10`}>
