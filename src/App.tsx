@@ -29,10 +29,18 @@ import { Tooltip } from './components/Tooltip';
 import { ModalManager } from './components/ModalManager';
 
 // Lazy Loaded View Components
+// Casting to any to avoid IntrinsicAttributes errors with named export lazy loading
 const CycleList = React.lazy(() => import('./components/CycleList').then(m => ({ default: m.CycleList })) as any);
 const DailySection = React.lazy(() => import('./modules/dashboard/DailySection').then(m => ({ default: m.DailySection })) as any);
 const WeeklySection = React.lazy(() => import('./modules/dashboard/WeeklySection').then(m => ({ default: m.WeeklySection })) as any);
 const MonthlySection = React.lazy(() => import('./modules/dashboard/MonthlySection').then(m => ({ default: m.MonthlySection })) as any);
+
+// SAFE LAZY LOAD: Catch error if file doesn't exist to prevent app crash
+const AiInsightCard = React.lazy(() => 
+    import('./components/dashboard/AiInsightCard')
+    .then(m => ({ default: m.AiInsightCard }))
+    .catch(() => ({ default: () => null })) as any
+);
 
 const AppContent = ({ user, setUser }: { user: User, setUser: (u: User | null) => void }) => {
   const { 
@@ -76,6 +84,7 @@ const AppContent = ({ user, setUser }: { user: User, setUser: (u: User | null) =
   const handleReloadSettings = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
+        // Use ensureUserProfile here too to be safe and get fresh data
         const updated = await ensureUserProfile(session.user);
         if (updated) {
             setUser(updated);
@@ -129,6 +138,7 @@ const AppContent = ({ user, setUser }: { user: User, setUser: (u: User | null) =
               <div className="h-6 w-[1px] bg-white/10 mx-1"></div>
               <DashboardActions 
                   onNewCycle={handleNewCycle}
+                  onReports={() => openModal('reports')}
                   onAlerts={() => openModal('alerts')}
                   onShare={() => openModal('flex')}
                   onAchievements={() => openModal('missions')}
@@ -156,6 +166,7 @@ const AppContent = ({ user, setUser }: { user: User, setUser: (u: User | null) =
            <div className="flex-1 overflow-x-auto">
              <DashboardActions 
                   onNewCycle={handleNewCycle} 
+                  onReports={() => openModal('reports')}
                   onAlerts={() => openModal('alerts')}
                   onShare={() => openModal('flex')}
                   onAchievements={() => openModal('missions')}
@@ -194,6 +205,13 @@ const AppContent = ({ user, setUser }: { user: User, setUser: (u: User | null) =
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* AI CARD HIDDEN VISUALLY AND SAFELY */}
+                <div className="hidden" style={{ display: 'none' }}>
+                    <React.Suspense fallback={null}>
+                        <AiInsightCard isPro={plan.isPro} />
+                    </React.Suspense>
                 </div>
 
                 <div key={dashboardPeriod} className="animate-fade-in">
@@ -250,6 +268,7 @@ const AppContent = ({ user, setUser }: { user: User, setUser: (u: User | null) =
         handleReloadSettings={handleReloadSettings}
         isPrivacyMode={isPrivacyMode}
         alerts={user.alerts || []}
+        reports={user.reports || []}
       />
 
       <Toast message={toast.message} isVisible={toast.visible} onClose={hideToast} type={toast.type} />
@@ -264,7 +283,7 @@ function App() {
 
   useEffect(() => {
     const initAuth = async () => {
-        // FAILSAFE: Timeout de 3 segundos para evitar tela branca infinita
+        // FAILSAFE: Timeout de 3 segundos
         const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve('timeout'), 3000));
         
         try {

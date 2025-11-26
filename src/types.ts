@@ -65,6 +65,7 @@ export interface User {
     achievements: Achievement[];
   };
   alerts?: Alert[];
+  reports?: Report[];
 }
 
 export type PlanFeature = 
@@ -176,6 +177,14 @@ export interface SmartAlertConfig {
   type: 'insight' | 'warning' | 'success' | 'neutral';
   actionLabel?: string;
   onAction?: () => void;
+}
+
+export interface Report {
+  id: string;
+  userId: string;
+  period: 'daily' | 'weekly' | 'monthly';
+  urlPdf: string;
+  createdAt: number;
 }
 
 export interface Badge {

@@ -1,11 +1,12 @@
-
 import React, { useState } from 'react';
-import { ArrowRight, ShieldCheck, Mail, Lock, User as UserIcon, Phone, Loader2, AlertCircle, Database } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Mail, Lock, User as UserIcon, Phone, AlertCircle, Database } from 'lucide-react';
 import { supabase, isConfigured } from '../lib/supabase';
 import { User } from '../types';
+import { Button } from './ui/Button';
+import { Input } from './ui/Input';
 
 interface LoginScreenProps {
-  onLogin: (user: User) => void; // Mantido para compatibilidade, mas o Auth Listener no App.tsx resolve
+  onLogin: (user: User) => void;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = () => {
@@ -45,7 +46,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
           }
         });
         if (error) throw error;
-        // Auto-login geralmente acontece, ou avisa para verificar email
         setErrorMsg("Conta criada! Verifique seu e-mail se necessário ou faça login.");
         setIsRegistering(false);
       } else {
@@ -123,60 +123,51 @@ export const LoginScreen: React.FC<LoginScreenProps> = () => {
             
             {isRegistering && (
               <>
-                <div className="relative">
-                  <UserIcon className="absolute left-3 top-3 text-secondary" size={18} />
-                  <input 
-                    type="text" 
-                    placeholder="Nome Completo" 
-                    value={name} 
-                    onChange={(e) => setName(e.target.value)} 
-                    required={isRegistering}
-                    className="w-full bg-black/30 border border-white/10 rounded-lg py-3 pl-10 text-white text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
-                  />
-                </div>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-3 text-secondary" size={18} />
-                  <input 
-                    type="tel" 
-                    placeholder="Telefone (WhatsApp)" 
-                    value={phone} 
-                    onChange={(e) => setPhone(e.target.value)} 
-                    className="w-full bg-black/30 border border-white/10 rounded-lg py-3 pl-10 text-white text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
-                  />
-                </div>
+                <Input
+                  icon={UserIcon}
+                  type="text"
+                  placeholder="Nome Completo"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required={isRegistering}
+                />
+                <Input
+                  icon={Phone}
+                  type="tel"
+                  placeholder="Telefone (WhatsApp)"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
               </>
             )}
 
-            <div className="relative">
-              <Mail className="absolute left-3 top-3 text-secondary" size={18} />
-              <input 
-                type="email" 
-                placeholder="seu@email.com" 
-                value={email} 
-                onChange={(e) => setEmail(e.target.value)} 
-                required
-                className="w-full bg-black/30 border border-white/10 rounded-lg py-3 pl-10 text-white text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
-              />
-            </div>
+            <Input
+              icon={Mail}
+              type="email"
+              placeholder="seu@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
 
-            <div className="relative">
-              <Lock className="absolute left-3 top-3 text-secondary" size={18} />
-              <input 
-                type="password" 
-                placeholder="Senha" 
-                value={password} 
-                onChange={(e) => setPassword(e.target.value)} 
-                required
-                minLength={6}
-                className="w-full bg-black/30 border border-white/10 rounded-lg py-3 pl-10 text-white text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" 
-              />
-            </div>
+            <Input
+              icon={Lock}
+              type="password"
+              placeholder="Senha"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={6}
+            />
 
-            <button type="submit" disabled={loading}
-              className="w-full py-3.5 font-bold text-white bg-primary hover:bg-primaryGlow transition-all shadow-neon-primary rounded-lg flex items-center justify-center gap-2 disabled:opacity-50 text-sm">
-              {loading ? <Loader2 size={18} className="animate-spin"/> : (isRegistering ? 'Criar Conta' : 'Acessar')}
-              {!loading && <ArrowRight size={18} />}
-            </button>
+            <Button 
+              type="submit" 
+              fullWidth 
+              isLoading={loading}
+              icon={!loading && <ArrowRight size={18} />}
+            >
+              {isRegistering ? 'Criar Conta' : 'Acessar'}
+            </Button>
           </form>
 
           <div className="mt-6 flex flex-col gap-3 text-center">

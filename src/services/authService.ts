@@ -1,3 +1,4 @@
+
 import { supabase } from '../lib/supabase';
 import { User } from '../types';
 
@@ -23,7 +24,8 @@ export const mapSupabaseUser = (sbUser: any, profile: any): User => {
     preferences: dbProfile.settings || metadata.settings || { monthlyGoal: 5000 },
     gamificationState: dbProfile.settings?.gamification || metadata.gamification || undefined,
     
-    alerts: metadata.alerts || []
+    alerts: metadata.alerts || [],
+    reports: metadata.reports || []
   };
 };
 

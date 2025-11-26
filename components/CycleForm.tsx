@@ -8,6 +8,8 @@ import { getLocalDate } from '../utils/dateUtils';
 import { useHaptic } from '../hooks/useHaptic';
 import { useCyclesContext } from '../contexts/CycleContext';
 import { useUI } from '../contexts/UIContext';
+import { Button } from './ui/Button';
+import { Input } from './ui/Input';
 
 interface CycleFormProps {
   onClose: () => void;
@@ -96,11 +98,27 @@ export const CycleForm: React.FC<CycleFormProps> = ({
       setTags(tags.filter(tag => tag !== t));
   };
 
+  // Helper para converter string monetária (PT-BR ou US) para float seguro
+  const parseCurrency = (value: string): number => {
+      if (!value) return 0;
+      let clean = value.replace(/[R$\s]/g, '');
+      if (clean.includes(',') && clean.includes('.')) {
+          if (clean.lastIndexOf(',') > clean.lastIndexOf('.')) {
+              clean = clean.replace(/\./g, '').replace(',', '.');
+          } else {
+              clean = clean.replace(/,/g, '');
+          }
+      } else if (clean.includes(',')) {
+          clean = clean.replace(',', '.');
+      }
+      const num = parseFloat(clean);
+      return isNaN(num) ? 0 : Number(num.toFixed(2));
+  };
+
   const handleQuickAdd = (amount: number) => {
     haptic.light();
-    // Simple parse just for the quick add UI logic, strict parse happens on submit
-    const current = parseFloat(formData.deposit.replace(',', '.') || '0') || 0;
-    setFormData(prev => ({ ...prev, deposit: (current + amount).toFixed(2) }));
+    const current = parseCurrency(formData.deposit);
+    setFormData(prev => ({ ...prev, deposit: (current + amount).toString() }));
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -134,18 +152,32 @@ export const CycleForm: React.FC<CycleFormProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     e.stopPropagation();
+
+    // Validação de Data Futura
+    const today = getLocalDate();
+    if (formData.date > today) {
+        showToast("Não é permitido registrar ciclos em datas futuras.", 'error');
+        haptic.error();
+        return;
+    }
+
     if (isSaving) return; 
     
     setIsSaving(true);
     haptic.success();
 
-    // Pass strings directly to the context/service which now has the Robust 'safeFloat' parser
-    // This avoids double parsing issues at the UI layer
+    const deposit = parseCurrency(formData.deposit);
+    const withdrawal = parseCurrency(formData.withdrawal);
+    const chest = parseCurrency(formData.chest);
+    
+    const profit = Number(((withdrawal + chest) - deposit).toFixed(2));
+
     const payload = {
       date: formData.date || getLocalDate(),
-      deposit: formData.deposit,
-      withdrawal: formData.withdrawal,
-      chest: formData.chest,
+      deposit,
+      withdrawal,
+      chest,
+      profit, 
       platform: formData.platform || 'Outros',
       notes: formData.notes,
       tags
@@ -156,7 +188,7 @@ export const CycleForm: React.FC<CycleFormProps> = ({
             setIsSaving(false);
             showToast("A operação está demorando. Verifique sua conexão.", 'error');
         }
-    }, 12000); // 12s timeout allows for retry logic in service
+    }, 10000);
 
     try {
         if (cycleToEdit) {
@@ -212,16 +244,19 @@ export const CycleForm: React.FC<CycleFormProps> = ({
 
         <div className="space-y-4">
            <div className="grid grid-cols-2 gap-4">
-              <div className="relative">
-                 <label className="text-[10px] uppercase font-bold text-secondary">Data</label>
-                 <div className="relative">
-                    <Calendar className="absolute left-3 top-3 text-primary" size={16}/>
-                    <input type="date" name="date" value={formData.date} onChange={handleChange} required 
-                      className="w-full bg-white/5 border border-white/10 rounded p-2 pl-10 text-white focus:border-primary outline-none bg-gradient-to-r from-primary/5 to-transparent"/>
-                 </div>
-              </div>
+              <Input
+                label="Data"
+                type="date"
+                name="date"
+                value={formData.date}
+                onChange={handleChange}
+                required
+                max={getLocalDate()} // Bloqueia datas futuras no calendário
+                icon={Calendar}
+                className="pl-10 bg-gradient-to-r from-primary/5 to-transparent"
+              />
               <div>
-                 <label className="text-[10px] uppercase font-bold text-secondary">Plataforma</label>
+                 <label className="text-[10px] uppercase font-bold text-secondary mb-1 block">Plataforma</label>
                  <input 
                     type="text" 
                     name="platform" 
@@ -229,7 +264,7 @@ export const CycleForm: React.FC<CycleFormProps> = ({
                     onChange={handleChange} 
                     maxLength={100}
                     list="platforms"
-                    className="w-full bg-white/5 border border-white/10 rounded p-2 text-white focus:border-primary outline-none"
+                    className="w-full bg-black/30 border border-white/10 rounded-lg p-3 text-white text-sm focus:border-primary outline-none"
                     autoComplete="off"
                  />
                  <datalist id="platforms">
@@ -240,9 +275,9 @@ export const CycleForm: React.FC<CycleFormProps> = ({
 
            <div className="grid grid-cols-3 gap-3">
               <div>
-                 <label className="text-[10px] uppercase font-bold text-secondary">Depósito</label>
+                 <label className="text-[10px] uppercase font-bold text-secondary mb-1 block">Depósito</label>
                  <input type="text" inputMode="decimal" name="deposit" value={formData.deposit} onChange={handleChange} required placeholder="0,00"
-                   className="w-full bg-white/5 border border-white/10 rounded p-2 text-white focus:border-primary outline-none"/>
+                   className="w-full bg-black/30 border border-white/10 rounded-lg p-3 text-white text-sm focus:border-primary outline-none"/>
                  
                  <div className="flex gap-1 mt-1">
                     <button type="button" onClick={() => handleQuickAdd(50)} className="px-1.5 py-0.5 bg-white/5 hover:bg-primary/20 text-[9px] text-secondary hover:text-primary rounded border border-white/5 transition-colors">+50</button>
@@ -250,20 +285,20 @@ export const CycleForm: React.FC<CycleFormProps> = ({
                  </div>
               </div>
               <div>
-                 <label className="text-[10px] uppercase font-bold text-profit">Saque</label>
+                 <label className="text-[10px] uppercase font-bold text-profit mb-1 block">Saque</label>
                  <input type="text" inputMode="decimal" name="withdrawal" value={formData.withdrawal} onChange={handleChange} placeholder="0,00"
-                   className="w-full bg-white/5 border border-white/10 rounded p-2 text-profit focus:border-profit outline-none"/>
+                   className="w-full bg-black/30 border border-white/10 rounded-lg p-3 text-profit focus:border-profit outline-none"/>
               </div>
               <div>
-                 <label className="text-[10px] uppercase font-bold text-gold">Baú (CPA)</label>
+                 <label className="text-[10px] uppercase font-bold text-gold mb-1 block">Baú (CPA)</label>
                  <input type="text" inputMode="decimal" name="chest" value={formData.chest} onChange={handleChange} placeholder="0,00"
-                   className="w-full bg-white/5 border border-white/10 rounded p-2 text-gold focus:border-gold outline-none"/>
+                   className="w-full bg-black/30 border border-white/10 rounded-lg p-3 text-gold focus:border-gold outline-none"/>
               </div>
            </div>
            
            <div>
                <label className="text-[10px] uppercase font-bold text-secondary flex items-center gap-1"><Hash size={10}/> Tags</label>
-               <div className="flex flex-wrap gap-2 p-2 bg-white/5 border border-white/10 rounded min-h-[42px]">
+               <div className="flex flex-wrap gap-2 p-2 bg-black/30 border border-white/10 rounded-lg min-h-[42px]">
                    {tags.map(tag => (
                        <span key={tag} className="px-2 py-1 bg-primary/20 text-primary text-[10px] font-bold rounded flex items-center gap-1">
                            #{tag} <button type="button" onClick={() => removeTag(tag)} className="hover:text-white"><X size={10}/></button>
@@ -285,16 +320,22 @@ export const CycleForm: React.FC<CycleFormProps> = ({
            </div>
 
            <div>
-              <label className="text-[10px] uppercase font-bold text-secondary">Notas</label>
+              <label className="text-[10px] uppercase font-bold text-secondary mb-1 block">Notas</label>
               <textarea name="notes" value={formData.notes} onChange={handleChange} rows={2} maxLength={1000}
-                className="w-full bg-white/5 border border-white/10 rounded p-2 text-white focus:border-primary outline-none resize-none"/>
+                className="w-full bg-black/30 border border-white/10 rounded-lg p-3 text-white text-sm focus:border-primary outline-none resize-none"/>
               <div className="text-[9px] text-secondary text-right">{formData.notes.length}/1000</div>
            </div>
         </div>
 
-        <button type="submit" disabled={isSaving} className="w-full mt-6 bg-primary hover:bg-primaryGlow text-white font-bold py-3 rounded shadow-neon-primary transition-all flex items-center justify-center gap-2 disabled:opacity-50">
-           {isSaving ? <Loader2 size={18} className="animate-spin"/> : <><Save size={18}/> Salvar Ciclo</>}
-        </button>
+        <Button 
+          type="submit" 
+          fullWidth 
+          isLoading={isSaving} 
+          className="mt-6"
+          icon={!isSaving && <Save size={18}/>}
+        >
+          Salvar Ciclo
+        </Button>
       </form>
     </div>
   );

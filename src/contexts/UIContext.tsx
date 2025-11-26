@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { Cycle, SmartAlertConfig } from '../types';
 
@@ -12,6 +13,7 @@ interface ModalState {
   hall: boolean;
   missions: boolean;
   profile: boolean;
+  reports: boolean;
 }
 
 interface UIContextType {
@@ -48,7 +50,7 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [modals, setModals] = useState<ModalState>({
     form: false, settings: false, achievements: false, flex: false, 
     alerts: false, import: false, trash: false, 
-    hall: false, missions: false, profile: false
+    hall: false, missions: false, profile: false, reports: false
   });
 
   const [editingCycle, setEditingCycle] = useState<Cycle | null>(null);
