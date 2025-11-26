@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useCallback } from 'react';
 import { LayoutDashboard, List, Plus, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { supabase } from './lib/supabase';
@@ -7,7 +6,6 @@ import { supabase } from './lib/supabase';
 import { User } from './types';
 import { saveSettings, softDeleteCycle } from './services/cycleService';
 import { ensureUserProfile } from './services/authService';
-// Automations removed from here to avoid loops - they are now handled in useCycles/registerNewCycle
 
 // Contexts
 import { UIProvider, useUI } from './contexts/UIContext';
@@ -29,11 +27,11 @@ import { Tooltip } from './components/Tooltip';
 import { ModalManager } from './components/ModalManager';
 
 // Lazy Loaded View Components
-const CycleList = React.lazy(() => import('./components/CycleList').then(m => ({ default: m.CycleList })));
-const DailySection = React.lazy(() => import('./modules/dashboard/DailySection').then(m => ({ default: m.DailySection })));
-const WeeklySection = React.lazy(() => import('./modules/dashboard/WeeklySection').then(m => ({ default: m.WeeklySection })));
-const MonthlySection = React.lazy(() => import('./modules/dashboard/MonthlySection').then(m => ({ default: m.MonthlySection })));
-const AiInsightCard = React.lazy(() => import('./components/dashboard/AiInsightCard').then(m => ({ default: m.AiInsightCard })));
+const CycleList = React.lazy(() => import('./components/CycleList').then(m => ({ default: m.CycleList })) as any);
+const DailySection = React.lazy(() => import('./modules/dashboard/DailySection').then(m => ({ default: m.DailySection })) as any);
+const WeeklySection = React.lazy(() => import('./modules/dashboard/WeeklySection').then(m => ({ default: m.WeeklySection })) as any);
+const MonthlySection = React.lazy(() => import('./modules/dashboard/MonthlySection').then(m => ({ default: m.MonthlySection })) as any);
+const AiInsightCard = React.lazy(() => import('./components/dashboard/AiInsightCard').then(m => ({ default: m.AiInsightCard })) as any);
 
 const AppContent = ({ user, setUser }: { user: User, setUser: (u: User | null) => void }) => {
   const { 
@@ -262,12 +260,22 @@ function App() {
 
   useEffect(() => {
     const initAuth = async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-            const safeUser = await ensureUserProfile(session.user);
-            setUser(safeUser);
+        try {
+            // Race between Supabase and a 5s Timeout
+            const { data, error } = await Promise.race([
+                supabase.auth.getSession(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Auth Timeout')), 5000))
+            ]) as any;
+
+            if (data?.session?.user) {
+                const safeUser = await ensureUserProfile(data.session.user);
+                setUser(safeUser);
+            }
+        } catch (e) {
+            console.warn("Auth check failed or timed out:", e);
+        } finally {
+            setCheckingAuth(false);
         }
-        setCheckingAuth(false);
     };
     initAuth();
 
